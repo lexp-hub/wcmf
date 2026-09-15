@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 400" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0B0B0D" />
+      <stop offset="50%" stop-color="#141417" />
+      <stop offset="100%" stop-color="#08080A" />
+    </linearGradient>
+
+    <!-- Orange Brand Glow -->
+    <radialGradient id="orange-glow" cx="50%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="#FF4400" stop-opacity="0.18" />
+      <stop offset="60%" stop-color="#FF4400" stop-opacity="0.02" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Dot Pattern -->
+    <pattern id="dot-grid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="12" cy="12" r="1.1" fill="#FFFFFF" fill-opacity="0.07" />
+    </pattern>
+  </defs>
+
+  <!-- Background Layer -->
+  <rect width="1200" height="400" fill="url(#bg-grad)" rx="16" />
+  <rect width="1200" height="400" fill="url(#dot-grid)" rx="16" />
+  <rect width="1200" height="400" fill="url(#orange-glow)" rx="16" />
+
+  <!-- Outer Frame & Subtle Border -->
+  <rect x="12" y="12" width="1176" height="376" rx="12" fill="none" stroke="#25252B" stroke-width="1.2" />
+
+  <!-- Corner Precision Brackets -->
+  <path d="M 28 42 L 28 28 L 42 28" fill="none" stroke="#FF4400" stroke-width="2" stroke-linecap="round" />
+  <path d="M 1172 42 L 1172 28 L 1158 28" fill="none" stroke="#FF4400" stroke-width="2" stroke-linecap="round" />
+  <path d="M 28 358 L 28 372 L 42 372" fill="none" stroke="#FF4400" stroke-width="2" stroke-linecap="round" />
+  <path d="M 1172 358 L 1172 372 L 1158 372" fill="none" stroke="#FF4400" stroke-width="2" stroke-linecap="round" />
+
+  <!-- Top Metadata Bar -->
+  <g transform="translate(48, 38)">
+    <text x="1104" y="2" fill="#FF4400" font-family="'Space Grotesk', -apple-system, sans-serif" font-size="12" font-weight="700" text-anchor="end" letter-spacing="2">BY LEX</text>
+  </g>
+
+  <!-- Central Title: WCMF STUDIO -->
+  <g transform="translate(600, 205)" text-anchor="middle">
+    <!-- Main Headline -->
+    <text x="0" y="10" fill="#FFFFFF" font-family="'Space Grotesk', -apple-system, sans-serif" font-size="86" font-weight="800" letter-spacing="-2">
+      WCMF <tspan fill="#FF4400">STUDIO</tspan>
+    </text>
+
+    <!-- Subtitle -->
+    <text x="0" y="58" fill="#8E8E93" font-family="'Space Grotesk', -apple-system, sans-serif" font-size="15" font-weight="600" letter-spacing="3.5">
+      WATCHFACE DESIGN SUITE FOR CMF BY NOTHING
+    </text>
+  </g>
+
+  <!-- Bottom Accent / Status -->
+  <g transform="translate(600, 360)" text-anchor="middle">
+    <text fill="#55555F" font-family="'Space Grotesk', -apple-system, sans-serif" font-size="11" font-weight="500" letter-spacing="2">
+      WATCH PRO 2 • WATCH 3 PRO • WATCH PRO • COMPACT BAND • WEB BLUETOOTH OTA
+    </text>
+  </g>
+</svg>

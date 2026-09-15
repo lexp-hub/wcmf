@@ -1,0 +1,395 @@
+:root {
+  --cmf-orange: #FF4400;
+  --cmf-orange-hover: #FF5A1F;
+  --cmf-orange-active: #E03C00;
+  --cmf-orange-dim: rgba(255, 68, 0, 0.15);
+  --cmf-orange-glow: rgba(255, 68, 0, 0.35);
+
+  --cmf-bg: #0C0C0D;
+  --cmf-surface: #141416;
+  --cmf-surface-2: #1B1B1E;
+  --cmf-surface-3: #242428;
+  --cmf-surface-4: #2E2E34;
+
+  --cmf-border: #2A2A30;
+  --cmf-border-subtle: #1F1F24;
+  --cmf-border-focus: #FF4400;
+
+  --cmf-text: #F2F2F2;
+  --cmf-text-muted: #8E8E93;
+  --cmf-text-dim: #55555B;
+  
+  --cmf-accent-yellow: #E5F33D;
+  --cmf-accent-cyan: #00F0FF;
+  --cmf-accent-red: #FF3B30;
+  --cmf-accent-green: #30D158;
+
+  /* Dual Typography: Space Grotesk (Nothing Signature Grotesk) + N-Dot Matrix */
+  --font-grotesk: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-sans: var(--font-grotesk);
+  --font-clean: var(--font-grotesk);
+  --font-mono: var(--font-grotesk);
+  --font-serif: var(--font-grotesk);
+  --font-ndot: var(--font-grotesk);
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 9999px;
+}
+
+*, *::before, *::after, html, body, button, input, select, textarea, span, p, h1, h2, h3, h4, h5, h6, div, label, a, svg, text, .font-mono, .font-sans, .font-serif {
+  font-family: var(--font-grotesk) !important;
+  box-sizing: border-box;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  background-color: var(--cmf-bg);
+  color: var(--cmf-text);
+  font-family: var(--font-grotesk) !important;
+  overflow: hidden;
+  height: 100vh;
+  width: 100vw;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Dot Grid Background Pattern */
+.cmf-dot-bg {
+  background-color: var(--cmf-bg);
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.cmf-dot-bg-dense {
+  background-image: radial-gradient(circle, rgba(255, 68, 0, 0.12) 1px, transparent 1px);
+  background-size: 10px 10px;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--cmf-surface);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--cmf-surface-4);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--cmf-orange);
+}
+
+/* CMF Buttons */
+.cmf-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--cmf-border);
+  background: var(--cmf-surface-2);
+  color: var(--cmf-text);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cmf-btn:hover {
+  background: var(--cmf-surface-3);
+  border-color: var(--cmf-text-muted);
+  color: #FFFFFF;
+}
+
+.cmf-btn:active {
+  transform: scale(0.98);
+}
+
+.cmf-btn-primary {
+  background: var(--cmf-orange);
+  border-color: var(--cmf-orange);
+  color: #FFFFFF;
+}
+.cmf-btn-primary:hover {
+  background: var(--cmf-orange-hover);
+  border-color: var(--cmf-orange-hover);
+  box-shadow: 0 0 16px var(--cmf-orange-glow);
+}
+
+.cmf-btn-sm {
+  padding: 5px 10px;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+}
+
+.cmf-btn-icon {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.cmf-btn-active {
+  background: var(--cmf-orange-dim) !important;
+  border-color: var(--cmf-orange) !important;
+  color: var(--cmf-orange) !important;
+}
+
+/* CMF Badge */
+.cmf-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: var(--cmf-surface-3);
+  color: var(--cmf-text-muted);
+  border: 1px solid var(--cmf-border);
+  white-space: nowrap;
+}
+
+.cmf-badge-orange {
+  background: var(--cmf-orange-dim);
+  color: var(--cmf-orange);
+  border-color: rgba(255, 68, 0, 0.3);
+}
+
+/* CMF Form Controls */
+.cmf-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cmf-text-muted);
+  margin-bottom: 6px;
+}
+
+.cmf-input, .cmf-select {
+  width: 100%;
+  background: var(--cmf-surface-2);
+  border: 1px solid var(--cmf-border);
+  border-radius: var(--radius-sm);
+  color: var(--cmf-text);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 7px 10px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.cmf-input:focus, .cmf-select:focus {
+  border-color: var(--cmf-orange);
+}
+
+.cmf-slider {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--cmf-surface-4);
+  outline: none;
+}
+
+.cmf-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--cmf-orange);
+  cursor: pointer;
+  border: 2px solid #FFFFFF;
+  box-shadow: 0 0 6px rgba(0,0,0,0.5);
+  transition: transform 0.1s ease;
+}
+
+.cmf-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+/* CMF Switch / Segmented Control */
+.cmf-segmented {
+  display: flex;
+  background: var(--cmf-surface-2);
+  border: 1px solid var(--cmf-border);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  gap: 2px;
+}
+
+.cmf-segmented-item {
+  flex: 1;
+  text-align: center;
+  padding: 5px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border-radius: 2px;
+  cursor: pointer;
+  color: var(--cmf-text-muted);
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.cmf-segmented-item.active {
+  background: var(--cmf-orange);
+  color: #FFFFFF;
+}
+
+/* Knurled Pattern Effect for CMF Bezels & Accents */
+.cmf-knurled {
+  background-image: repeating-linear-gradient(45deg, rgba(255,255,255,0.06) 0, rgba(255,255,255,0.06) 1px, transparent 0, transparent 4px),
+                    repeating-linear-gradient(-45deg, rgba(255,255,255,0.06) 0, rgba(255,255,255,0.06) 1px, transparent 0, transparent 4px);
+}
+
+/* Watch Viewport Styles with Strict Geometric Proportions */
+.watch-frame-round {
+  width: 470px;
+  height: 470px;
+  min-width: 470px;
+  min-height: 470px;
+  max-width: 470px;
+  max-height: 470px;
+  aspect-ratio: 1 / 1;
+  flex-shrink: 0;
+  border-radius: 50%;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.95), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  transition: all 0.3s ease;
+}
+
+.watch-frame-squircle {
+  width: 420px;
+  height: 512px;
+  min-width: 420px;
+  min-height: 512px;
+  max-width: 420px;
+  max-height: 512px;
+  aspect-ratio: 420 / 512;
+  flex-shrink: 0;
+  border-radius: 46px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.95), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  transition: all 0.3s ease;
+}
+
+.watch-frame-rect {
+  width: 296px;
+  height: 472px;
+  min-width: 296px;
+  min-height: 472px;
+  max-width: 296px;
+  max-height: 472px;
+  aspect-ratio: 296 / 472;
+  flex-shrink: 0;
+  border-radius: 32px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.95), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  transition: all 0.3s ease;
+}
+
+/* Crown Simulation */
+.watch-crown {
+  position: absolute;
+  right: -14px;
+  top: 130px;
+  width: 14px;
+  height: 38px;
+  border-radius: 0 4px 4px 0;
+  box-shadow: 2px 2px 8px rgba(0,0,0,0.6);
+  background: linear-gradient(to right, #2c2c2c, #4a4a4a, #2c2c2c);
+  border: 1px solid rgba(255,255,255,0.15);
+}
+
+.watch-crown::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 3px;
+  right: 3px;
+  background: repeating-linear-gradient(to bottom, #111 0px, #111 2px, #666 2px, #666 4px);
+}
+
+.watch-crown-orange {
+  border-left: 2px solid var(--cmf-orange);
+}
+
+.watch-crown-orange::before {
+  content: '';
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--cmf-orange);
+}
+
+/* Watch Strap Connectors */
+.watch-strap-top {
+  position: absolute;
+  top: -42px;
+  width: 170px;
+  height: 45px;
+  border-radius: 8px 8px 0 0;
+  z-index: -1;
+  background: linear-gradient(to bottom, #1e1e1e, #141414);
+  box-shadow: inset 0 2px 4px rgba(255,255,255,0.05);
+}
+
+.watch-strap-bottom {
+  position: absolute;
+  bottom: -42px;
+  width: 170px;
+  height: 45px;
+  border-radius: 0 0 8px 8px;
+  z-index: -1;
+  background: linear-gradient(to top, #1e1e1e, #141414);
+  box-shadow: inset 0 -2px 4px rgba(255,255,255,0.05);
+}
+
+.watch-strap-orange {
+  background: linear-gradient(to bottom, #FF4400, #E03C00) !important;
+}
+
+.watch-strap-ash {
+  background: linear-gradient(to bottom, #4A4A50, #2E2E34) !important;
+}
+
+/* Glass Reflection Highlight */
+.watch-glass-glare {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(circle at 75% 25%, rgba(255, 255, 255, 0.07) 0%, transparent 60%);
+  z-index: 20;
+}
