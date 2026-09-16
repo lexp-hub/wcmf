@@ -3042,20 +3042,21 @@ Available developer commands:
 
     const resourcePayload = concatArrays(resHdr, compressedRgb565);
 
-    // 4. Build TLV Tree structure (CMF Watch Pro 2 / FMC specification §9.6a)
+    // 4. Build TLV Tree structure (CMF Watch Pro 2 / Goodix 32-bit aligned specification)
     const TAG_ROOT = 0x20;
     const TAG_MAIN = 0x21;
     const TAG_IMAGE = 0x30;
     const TAG_STRUCT = 0x01;
 
-    // Struct payload (25 bytes):
+    // Struct payload (28 bytes: 25B metadata + 3B padding for strict 4-byte / 32-bit word alignment):
     // - [0..3]   : Coordinates x (int16 LE = 0), y (int16 LE = 0)
     // - [4..17]  : Metadata (14B): w(2B), h(2B), rgb tint(3B), flags(7B)
-    // - [18..24] : RefTail (7B): refType(0x01), count(uint16 LE = 1), resOffset(uint32 LE)
+    // - [18..24] : RefTail (7B): refType(0x01), count(uint16 LE = 1), resOffset(uint32 LE = 76)
+    // - [25..27] : Zero padding (3B) -> structPayload 28B -> structTlv 31B -> imgTlv 34B -> mainTlv 37B -> rootTlv 40B
     const HEADER_SIZE = 36;
-    const resOffset = HEADER_SIZE + 37; // 36 (header) + 37 (root TLV) = 73 bytes (absolute file offset)
+    const resOffset = 76; // Strictly 4-byte (32-bit) aligned resource offset: 36 (header) + 40 (root TLV) = 76
 
-    const structPayload = new Uint8Array(25);
+    const structPayload = new Uint8Array(28); // 25 bytes data + 3 bytes zero padding
     const structView = new DataView(structPayload.buffer);
     structView.setInt16(0, 0, true); // x = 0
     structView.setInt16(2, 0, true); // y = 0
@@ -3065,30 +3066,31 @@ Available developer commands:
     // [11..17] = 0 (flags, res, source, sub, max)
     structPayload[18] = 0x01; // refType = 0x01 (single image reference)
     structView.setUint16(19, 1, true); // count = 1
-    structView.setUint32(21, resOffset, true); // byte offset of resource in file (73)
+    structView.setUint32(21, resOffset, true); // byte offset of resource in file (76)
+    // [25..27] remain 0 (padding)
 
-    // Pack Struct TLV: [TAG(1B), LEN_L(1B), LEN_H(1B), PAYLOAD(25B)] -> 28 bytes
+    // Pack Struct TLV: [TAG(1B), LEN_L(1B), LEN_H(1B), PAYLOAD(28B)] -> 31 bytes
     const structTlv = new Uint8Array(3 + structPayload.length);
     structTlv[0] = TAG_STRUCT;
     structTlv[1] = structPayload.length & 0xFF;
     structTlv[2] = (structPayload.length >> 8) & 0xFF;
     structTlv.set(structPayload, 3);
 
-    // Pack Image TLV: [TAG(1B), LEN_L(1B), LEN_H(1B), PAYLOAD(28B)] -> 31 bytes
+    // Pack Image TLV: [TAG(1B), LEN_L(1B), LEN_H(1B), PAYLOAD(31B)] -> 34 bytes
     const imgTlv = new Uint8Array(3 + structTlv.length);
     imgTlv[0] = TAG_IMAGE;
     imgTlv[1] = structTlv.length & 0xFF;
     imgTlv[2] = (structTlv.length >> 8) & 0xFF;
     imgTlv.set(structTlv, 3);
 
-    // Pack Main Screen TLV: [TAG(1B), LEN_L(1B), LEN_H(1B), PAYLOAD(31B)] -> 34 bytes
+    // Pack Main Screen TLV: [TAG(1B), LEN_L(1B), LEN_H(1B), PAYLOAD(34B)] -> 37 bytes
     const mainScreenTlv = new Uint8Array(3 + imgTlv.length);
     mainScreenTlv[0] = TAG_MAIN;
     mainScreenTlv[1] = imgTlv.length & 0xFF;
     mainScreenTlv[2] = (imgTlv.length >> 8) & 0xFF;
     mainScreenTlv.set(imgTlv, 3);
 
-    // Pack Root TLV: [TAG(1B), LEN_L(1B), LEN_H(1B), PAYLOAD(34B)] -> 37 bytes total
+    // Pack Root TLV: [TAG(1B), LEN_L(1B), LEN_H(1B), PAYLOAD(37B)] -> 40 bytes total (divisible by 4)
     const rootTlv = new Uint8Array(3 + mainScreenTlv.length);
     rootTlv[0] = TAG_ROOT;
     rootTlv[1] = mainScreenTlv.length & 0xFF;
@@ -3617,7 +3619,6 @@ Available developer commands:
       // "1.21 GIGAWATTS?! GREAT SCOTT!" - Back to the Future (1985) (╯°□°)╯︵ ┻━┻
       await new Promise((resolve, reject) => {
         let stallTimer = null;
-        let isSendingChunk = false; // Mutex to prevent duplicate re-entry while transmitting
 
         // 30-second watchdog timer to catch stalled BLE connections
         const resetStall = () => {
@@ -3637,7 +3638,7 @@ Available developer commands:
 
         resetStall();
 
-        // Handle chunk requests from watch
+        // Handle chunk requests from watch (Watch-driven OTA sync flow)
         handlers.set(CMF_CMD.wfChunkReq, async chunkReqBytes => {
           if (chunkReqBytes.length < 8) {
             cleanupHandlers();
@@ -3645,11 +3646,6 @@ Available developer commands:
             return;
           }
           resetStall();
-
-          // Concurrency lock: ignore duplicate notification pings while current chunk is streaming
-          if (isSendingChunk) {
-            return;
-          }
 
           const reqView = new DataView(chunkReqBytes.buffer, chunkReqBytes.byteOffset);
           const offset = reqView.getUint32(0, true);
@@ -3662,12 +3658,12 @@ Available developer commands:
             return;
           }
 
-          // Bound requested slice size to watch RAM assembler buffer limit (4096 bytes)
-          const maxChunkPerWrite = 4096;
-          const bytesToSend = Math.min(size, maxChunkPerWrite, totalBytes - offset);
-          if (bytesToSend <= 0) return;
+          if (offset + size > totalBytes) {
+            cleanupHandlers();
+            reject(new Error(`Chunk request out of bounds: offset ${offset} + size ${size} > total ${totalBytes}`));
+            return;
+          }
 
-          isSendingChunk = true;
           setBleProgress(pct);
           setBleLogs(prev => [
             ...prev.slice(-5),
@@ -3675,17 +3671,15 @@ Available developer commands:
           ]);
 
           try {
-            const chunkSlice = binUint8.slice(offset, offset + bytesToSend);
+            const chunkSlice = binUint8.slice(offset, offset + size);
             await sendData(CMF_CMD.wfChunkWrite, chunkSlice, subProgress => {
-              const currentTotal = offset + bytesToSend * subProgress;
+              const currentTotal = offset + size * subProgress;
               const subPct = Math.min(99, Math.round((currentTotal / totalBytes) * 100));
               setBleProgress(subPct);
             });
           } catch (writeErr) {
             cleanupHandlers();
             reject(writeErr);
-          } finally {
-            isSendingChunk = false;
           }
         });
 
