@@ -2197,6 +2197,9 @@ function App() {
   const [bleProgress, setBleProgress] = useState(0);
   const [bleLogs, setBleLogs] = useState([]);
   const [bleDeviceName, setBleDeviceName] = useState(null);
+  const [bleBattery, setBleBattery] = useState(null);
+  const [bleFirmware, setBleFirmware] = useState(null);
+  const bleSessionRef = useRef(null);
   const [toastMessage, setToastMessage] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
 
@@ -3208,6 +3211,14 @@ Available developer commands:
   const forgetBleDevice = async () => {
     localStorage.removeItem('wcmf_authkey');
     localStorage.removeItem('fmc_authkey');
+    if (bleSessionRef.current && bleSessionRef.current.gattServer) {
+      try {
+        bleSessionRef.current.gattServer.disconnect();
+      } catch (e) {}
+    }
+    bleSessionRef.current = null;
+    setBleBattery(null);
+    setBleFirmware(null);
     if (navigator.bluetooth && navigator.bluetooth.getDevices) {
       try {
         const devices = await navigator.bluetooth.getDevices();
@@ -3217,7 +3228,7 @@ Available developer commands:
     setBleStatus('idle');
     setBleDeviceName(null);
     setBleProgress(0);
-    setBleLogs(['[BLE] Stored pairing keys and cached device associations cleared.']);
+    setBleLogs(['[BLE] Stored pairing keys, cached device associations, and active session cleared.']);
     showToast('Bluetooth pairing cache cleared');
   };
 
@@ -3227,19 +3238,14 @@ Available developer commands:
   /**
    * startBleFlash
    * Main Web Bluetooth execution pipeline. Coordinates scanning, GATT connection,
-   * AT shell challenge-response pairing, AES-CBC session key negotiation, device info
-   * telemetry, and OTA watchface compilation and streaming.
-   * 
-   * PROTOCOL EXECUTION PHASES:
-   * Phase 1: Browser Bluetooth Device Filter (Company ID 3275 / CMF Watch prefixes)
-   * Phase 2: GATT Connection & Characteristic Discovery (cmd, data, shell, battery)
-   * Phase 3: Cryptographic Pairing (`AT GETSECRET` -> User Accept -> SHA-256 Auth)
-   * Phase 4: Device Telemetry & Time Sync (`time`, `fwGet`, `battery`)
-   * Phase 5: OTA Upload Handshake (`wfInit1Req` -> `wfInit2Req`)
-   * Phase 6: Watch-Driven Packet Stream (`wfChunkReq` -> `wfChunkWrite` unencrypted)
-   * Phase 7: Verification & Activation (`wfFinishAck1` -> `wfFinishAck2`)
+  // SECTION 6: AUTHENTIC CMF BLE OTA DRIVER & PROTOCOL ENGINE
+  // ==========================================================================
+  /**
+   * connectBle
+   * Initiates device discovery, GATT connection, AES authentication and handshake,
+   * and stores the active session in bleSessionRef.
    */
-  const startBleFlash = async () => {
+  const connectBle = async () => {
     setShowBleModal(true);
     setBleStatus('scanning');
     setBleProgress(0);
@@ -3256,10 +3262,9 @@ Available developer commands:
         '[FEDORA/LINUX FIX] To enable in Brave or Chrome on Linux:',
         '  1. Open brave://flags or chrome://flags in a new tab',
         '  2. Search for "enable-web-bluetooth" and set to "Enabled"',
-        '  3. Relaunch the browser and try again.',
-        '[DEMO] You can also click "Demo Mode" below to preview the exact handshake!'
+        '  3. Relaunch the browser and try again.'
       ]);
-      return;
+      return null;
     }
 
     try {
@@ -3268,7 +3273,6 @@ Available developer commands:
         '[SCAN] Please select your CMF Watch from the browser popup dialog...'
       ]);
 
-      // "These aren't the BLE peripherals you're looking for..." - Obi-Wan (☞ﾟヮﾟ)☞
       const bleDevice = await navigator.bluetooth.requestDevice({
         filters: [
           { services: [61415] },
@@ -3298,6 +3302,9 @@ Available developer commands:
         if (!isExplicitDisconnect) {
           console.warn('[BLE] GATT server disconnected unexpectedly');
           setBleLogs(prev => [...prev, '[WARN] GATT server disconnected.']);
+          bleSessionRef.current = null;
+          setBleStatus('idle');
+          setBleBattery(null);
         }
       });
 
@@ -3428,7 +3435,6 @@ Available developer commands:
         return k && k.length === 32 ? hexToBytes(k) : null;
       };
 
-      // If pairing service is hidden and no auth key saved, trigger GATT reboot cycle (FMC mechanism)
       if (!chars.shellWrite && !getSavedKey()) {
         setBleLogs(prev => [...prev, '[PAIR] Pairing service hidden by watch — cycling GATT connection...']);
         isExplicitDisconnect = true;
@@ -3492,7 +3498,6 @@ Available developer commands:
         ]);
 
         await codec.setKey(null);
-        // "Ah ah ah! You didn't say the magic word!" - Jurassic Park (1993) ( ͡° ͜ʖ ͡°)
         const secretPromise = new Promise((resolve, reject) => {
           shellWaiter = resolve;
           setTimeout(() => reject(new Error('Timeout waiting for user confirmation on watch screen')), 30000);
@@ -3560,6 +3565,7 @@ Available developer commands:
         await sendCmd(CMF_CMD.fwGet, new Uint8Array(0));
         const fwBytes = await waitFor(CMF_CMD.fwRet, 3000);
         const fwVersion = [...fwBytes].join('.');
+        setBleFirmware(fwVersion);
         setBleLogs(prev => [...prev, `[INFO] CMF Watch Firmware: v${fwVersion}`]);
       } catch (e) {}
 
@@ -3567,12 +3573,65 @@ Available developer commands:
         try {
           const batVal = await chars.battery.readValue();
           const batLevel = batVal.getUint8(0);
+          setBleBattery(batLevel);
           setBleLogs(prev => [...prev, `[INFO] Watch Battery Level: ${batLevel}%`]);
         } catch (e) {}
       }
 
-      // 4. Compile Watchface Binary & Begin Upload
+      const session = {
+        bleDevice,
+        gattServer,
+        chars,
+        codec,
+        waiters,
+        handlers,
+        sendCmd,
+        sendData,
+        waitFor,
+        name
+      };
+      bleSessionRef.current = session;
+      setBleStatus('connected');
+      setBleLogs(prev => [
+        ...prev,
+        '[OK] Watch connected & authenticated!',
+        '[READY] Tap "Send .BIN to Watch" whenever you are ready to flash.'
+      ]);
+      showToast(`Connected to ${name}! Ready to send .BIN.`);
+      return session;
+    } catch (err) {
+      if (err.name === 'NotFoundError' || (err.message && err.message.includes('User cancelled'))) {
+        setBleLogs(prev => [...prev, '[BLE] Device pairing cancelled by user.']);
+        setBleStatus('idle');
+      } else {
+        setBleStatus('error');
+        setBleLogs(prev => [
+          ...prev,
+          `[ERR] Bluetooth error: ${err.message}`,
+          '[TIP] Ensure your phone (Nothing X / CMF Watch app) has Bluetooth temporarily OFF so the watch is not locked by the phone.'
+        ]);
+      }
+      return null;
+    }
+  };
+
+  /**
+   * sendWatchfaceBin
+   * Compiles the watchface binary using Zephyr/LVGL format and streams it to the watch.
+   * Uses existing active BLE session if connected, or auto-connects first.
+   */
+  const sendWatchfaceBin = async () => {
+    setShowBleModal(true);
+    let session = bleSessionRef.current;
+    if (!session || !session.gattServer || !session.gattServer.connected) {
+      setBleLogs(prev => [...prev, '[BLE] Not connected yet. Initiating connection & pairing...']);
+      session = await connectBle();
+      if (!session) return;
+    }
+
+    try {
       setBleStatus('flashing');
+      setBleProgress(0);
       const faceName = 'wcmf_dial';
       const binBuffer = buildCmfBinBuffer(faceName);
       const totalBytes = binBuffer.byteLength;
@@ -3585,8 +3644,8 @@ Available developer commands:
         '[OTA] Sending Watchface Upload Initialization (wfInit1Req)...'
       ]);
 
-      await sendData(CMF_CMD.wfInit1Req, new Uint8Array([0xA5]));
-      const init1Rep = await waitFor(CMF_CMD.wfInit1Rep);
+      await session.sendData(CMF_CMD.wfInit1Req, new Uint8Array([0xA5]));
+      const init1Rep = await session.waitFor(CMF_CMD.wfInit1Rep);
       if (!init1Rep.length || init1Rep[0] !== 1) {
         throw new Error(`Watch rejected upload initialization (init1: ${bytesToHex(init1Rep)})`);
       }
@@ -3599,8 +3658,8 @@ Available developer commands:
       init2View.setUint32(9, totalBytes, true);
 
       setBleLogs(prev => [...prev, '[OTA] Requesting memory allocation on watch (wfInit2Req)...']);
-      await sendData(CMF_CMD.wfInit2Req, init2Payload);
-      const init2Rep = await waitFor(CMF_CMD.wfInit2Rep);
+      await session.sendData(CMF_CMD.wfInit2Req, init2Payload);
+      const init2Rep = await session.waitFor(CMF_CMD.wfInit2Rep);
       if (!init2Rep.length || init2Rep[0] !== 1) {
         throw new Error(`Watch refused watchface memory slot (init2: ${bytesToHex(init2Rep)})`);
       }
@@ -3610,35 +3669,30 @@ Available developer commands:
         '[OTA] Memory allocated! Watch is requesting packet chunks...'
       ]);
 
-      // ======================================================================
-      // PHASE 6: WATCH-DRIVEN OTA PACKET STREAM (wfChunkReq -> wfChunkWrite)
-      // ======================================================================
-      // PHASE 6: WATCH-DRIVEN OTA PACKET STREAM (STRICT FIFO QUEUE)
-      // ======================================================================
+      // Phase 6: Watch-Driven Packet Stream with Sequential FIFO Queue
       await new Promise((resolve, reject) => {
         let stallTimer = null;
-        let transferPromise = Promise.resolve(); // Strict FIFO Queue to serialize GATT writes
+        let transferPromise = Promise.resolve();
         let lastHandledOffset = -1;
 
         const resetStall = () => {
           clearTimeout(stallTimer);
           stallTimer = setTimeout(() => {
-            cleanupHandlers();
-            // "Game over, man! Game over!" - Aliens (1986) ¯\_(ツ)_/¯
+            session.handlers.delete(CMF_CMD.wfChunkReq);
+            session.handlers.delete(CMF_CMD.wfFinishAck1);
             reject(new Error('Watchface upload stream stalled by watch.'));
           }, 30000);
         };
 
         const cleanupHandlers = () => {
           clearTimeout(stallTimer);
-          handlers.delete(CMF_CMD.wfChunkReq);
-          handlers.delete(CMF_CMD.wfFinishAck1);
+          session.handlers.delete(CMF_CMD.wfChunkReq);
+          session.handlers.delete(CMF_CMD.wfFinishAck1);
         };
 
         resetStall();
 
-        // Handle chunk requests from watch with sequential FIFO queue & deduplication
-        handlers.set(CMF_CMD.wfChunkReq, chunkReqBytes => {
+        session.handlers.set(CMF_CMD.wfChunkReq, chunkReqBytes => {
           if (chunkReqBytes.length < 8) return;
           resetStall();
 
@@ -3651,9 +3705,7 @@ Available developer commands:
             return;
           }
 
-          // Enqueue GATT transmission so concurrent BLE notifications never collide
           transferPromise = transferPromise.then(async () => {
-            // Deduplicate pings for the same offset already sent
             if (offset === lastHandledOffset && offset > 0) return;
             lastHandledOffset = offset;
 
@@ -3668,7 +3720,7 @@ Available developer commands:
             ]);
 
             const chunkSlice = binUint8.slice(offset, offset + bytesToSend);
-            await sendData(CMF_CMD.wfChunkWrite, chunkSlice, subProgress => {
+            await session.sendData(CMF_CMD.wfChunkWrite, chunkSlice, subProgress => {
               const currentTotal = offset + bytesToSend * subProgress;
               const subPct = Math.min(99, Math.round((currentTotal / totalBytes) * 100));
               setBleProgress(subPct);
@@ -3679,14 +3731,11 @@ Available developer commands:
           });
         });
 
-        // ====================================================================
-        // PHASE 7: WATCH NOTIFICATION VERIFICATION & ACTIVATION
-        // ====================================================================
-        handlers.set(CMF_CMD.wfFinishAck1, async finishAckBytes => {
+        // Phase 7: Verification & Activation
+        session.handlers.set(CMF_CMD.wfFinishAck1, async finishAckBytes => {
           cleanupHandlers();
           try {
-            // Confirm activation with 0xA5 command ACK
-            await sendData(CMF_CMD.wfFinishAck2, new Uint8Array([0xA5]));
+            await session.sendData(CMF_CMD.wfFinishAck2, new Uint8Array([0xA5]));
           } catch (e) {}
 
           if (finishAckBytes.length && finishAckBytes[0] === 1) {
@@ -3703,21 +3752,19 @@ Available developer commands:
         '[OK] Watchface written to flash and verified by Zephyr RTOS!',
         '[OK] Watchface activated live on your CMF Watch screen!'
       ]);
-      setBleStatus('success');
+      setBleStatus('connected');
       showToast('Watchface successfully installed on CMF Watch!');
     } catch (err) {
-      if (err.name === 'NotFoundError' || (err.message && err.message.includes('User cancelled'))) {
-        setBleLogs(prev => [...prev, '[BLE] Device pairing cancelled by user.']);
-        setBleStatus('idle');
-      } else {
-        setBleStatus('error');
-        setBleLogs(prev => [
-          ...prev,
-          `[ERR] Bluetooth error: ${err.message}`,
-          '[TIP] Ensure your phone (Nothing X / CMF Watch app) has Bluetooth temporarily OFF so the watch is not locked by the phone.'
-        ]);
-      }
+      setBleStatus('error');
+      setBleLogs(prev => [
+        ...prev,
+        `[ERR] Bluetooth upload error: ${err.message}`
+      ]);
     }
+  };
+
+  const startBleFlash = async () => {
+    return sendWatchfaceBin();
   };
 
   const exportJSON = () => {
@@ -3898,12 +3945,27 @@ Available developer commands:
           </button>
 
           <button
-            className="cmf-btn cmf-btn-sm border-[#FF4400] text-[#FF4400] hover:bg-[#FF4400]/15 flex items-center gap-1.5"
-            onClick={startBleFlash}
-            title="Flash current watchface directly to CMF Watch via Bluetooth"
+            className={`cmf-btn cmf-btn-sm flex items-center gap-1.5 ${
+              bleStatus === 'connected'
+                ? 'border-[#30D158] text-[#30D158] bg-[#30D158]/10 hover:bg-[#30D158]/20'
+                : 'border-[#3A3A40] text-[#A0A0A5] hover:border-[#FF4400] hover:text-[#FF4400]'
+            }`}
+            onClick={connectBle}
+            disabled={bleStatus === 'pairing' || bleStatus === 'flashing'}
+            title={bleStatus === 'connected' ? `Connected: ${bleDeviceName || 'CMF Watch'}${bleBattery !== null ? ` (${bleBattery}%)` : ''}` : 'Pair and authenticate CMF Watch over Bluetooth'}
           >
-            <CmfDotIcon name="bluetooth" size={14} color="#FF4400" />
-            <span>FLASH BLE</span>
+            <CmfDotIcon name={bleStatus === 'connected' ? 'check' : 'bluetooth'} size={13} color={bleStatus === 'connected' ? '#30D158' : '#FF4400'} />
+            <span>{bleStatus === 'connected' ? (bleBattery !== null ? `PAIRED ${bleBattery}%` : 'PAIRED') : 'PAIR BLE'}</span>
+          </button>
+
+          <button
+            className="cmf-btn cmf-btn-sm border-[#FF4400] text-[#FF4400] hover:bg-[#FF4400]/15 flex items-center gap-1.5 font-bold"
+            onClick={sendWatchfaceBin}
+            disabled={bleStatus === 'flashing' || bleStatus === 'pairing'}
+            title="Send compiled .BIN watchface directly to CMF Watch"
+          >
+            <CmfDotIcon name="flash" size={13} color="#FF4400" />
+            <span>SEND .BIN</span>
           </button>
 
           <button
@@ -5039,17 +5101,38 @@ Available developer commands:
               </button>
             </div>
 
-            {/* Target Hardware Info */}
+            {/* Target Hardware & Connection State */}
             <div className="flex items-center justify-between bg-[#1A1A1E] p-3 rounded-lg border border-[#2A2A30]">
               <div>
                 <div className="text-[10px] text-[#8E8E93] uppercase font-bold">Target Device</div>
-                <div className="text-xs font-bold text-white">
-                  {currentDeviceConfig.name} ({currentDeviceConfig.display})
+                <div className="text-xs font-bold text-white flex items-center gap-2">
+                  <span>{currentDeviceConfig.name} ({currentDeviceConfig.display})</span>
+                  {bleDeviceName && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#242428] text-[#FF4400] font-mono">
+                      {bleDeviceName}
+                    </span>
+                  )}
                 </div>
               </div>
               <div className="text-right">
-                <div className="text-[10px] text-[#8E8E93] uppercase font-bold">Protocol Engine</div>
-                <div className="text-xs font-mono text-[#FF4400] font-bold">Goodix GATT + AES OTA</div>
+                <div className="text-[10px] text-[#8E8E93] uppercase font-bold">Connection State</div>
+                <div className="text-xs font-mono font-bold flex items-center justify-end gap-1.5">
+                  {bleStatus === 'connected' ? (
+                    <span className="text-[#30D158] flex items-center gap-1">
+                      <CmfDotIcon name="check" size={11} color="#30D158" />
+                      CONNECTED {bleBattery !== null ? `• ${bleBattery}%` : ''}
+                    </span>
+                  ) : bleStatus === 'flashing' ? (
+                    <span className="text-[#FF4400]">SENDING .BIN</span>
+                  ) : bleStatus === 'pairing' ? (
+                    <span className="text-[#E5F33D]">PAIRING...</span>
+                  ) : (
+                    <span className="text-[#8E8E93]">NOT CONNECTED</span>
+                  )}
+                </div>
+                {bleFirmware && (
+                  <div className="text-[10px] text-[#8E8E93] font-mono">FW: {bleFirmware}</div>
+                )}
               </div>
             </div>
 
@@ -5082,6 +5165,7 @@ Available developer commands:
                     bleStatus === 'flashing' ? 'bg-[#FF4400] animate-ping' :
                     bleStatus === 'pairing' ? 'bg-[#E5F33D] animate-ping' :
                     bleStatus === 'authenticating' ? 'bg-[#00F0FF] animate-pulse' :
+                    bleStatus === 'connected' ? 'bg-[#30D158]' :
                     bleStatus === 'success' ? 'bg-[#30D158]' :
                     bleStatus === 'error' ? 'bg-[#FF3B30]' : 'bg-[#8E8E93]'
                   }`}></span>
@@ -5131,20 +5215,41 @@ Available developer commands:
 
             {/* Actions & Controls */}
             <div className="space-y-2 pt-1">
-              <div className="flex gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <button
-                  className="cmf-btn cmf-btn-primary flex-1 py-2.5 text-xs font-bold flex items-center justify-center gap-1.5"
-                  onClick={startBleFlash}
+                  className={`cmf-btn py-2.5 text-xs font-bold flex items-center justify-center gap-1.5 ${
+                    bleStatus === 'connected'
+                      ? 'border-[#30D158] text-[#30D158] bg-[#30D158]/10 hover:bg-[#30D158]/20'
+                      : 'border-[#3A3A40] text-white hover:border-[#FF4400] hover:text-[#FF4400]'
+                  }`}
+                  onClick={connectBle}
                   disabled={bleStatus === 'flashing' || bleStatus === 'pairing'}
+                  title="Discover device, authenticate session, and connect GATT"
                 >
-                  <CmfDotIcon name="bluetooth" size={14} color="#FFFFFF" />
+                  <CmfDotIcon name={bleStatus === 'connected' ? 'check' : 'bluetooth'} size={14} color={bleStatus === 'connected' ? '#30D158' : '#FF4400'} />
                   <span>
-                    {bleStatus === 'flashing' ? 'Transmitting Dial...' :
-                     bleStatus === 'pairing' ? 'Confirm on Watch...' : 'Scan & Flash via BLE'}
+                    {bleStatus === 'pairing' ? 'Confirm on Watch...' :
+                     bleStatus === 'connected' ? (bleBattery !== null ? `1. Re-Pair (${bleBattery}%)` : '1. Re-Pair BLE') :
+                     '1. Pair BLE'}
                   </span>
                 </button>
+
                 <button
-                  className="cmf-btn py-2.5 text-xs"
+                  className="cmf-btn cmf-btn-primary py-2.5 text-xs font-bold flex items-center justify-center gap-1.5 shadow-lg"
+                  onClick={sendWatchfaceBin}
+                  disabled={bleStatus === 'flashing' || bleStatus === 'pairing'}
+                  title="Compile and send .BIN watchface over Bluetooth"
+                >
+                  <CmfDotIcon name="flash" size={14} color="#FFFFFF" />
+                  <span>
+                    {bleStatus === 'flashing' ? `Sending... ${bleProgress}%` : '2. Send .BIN to Watch'}
+                  </span>
+                </button>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  className="cmf-btn flex-1 py-2 text-xs text-[#8E8E93] hover:text-white"
                   onClick={() => setShowBleModal(false)}
                 >
                   Close
