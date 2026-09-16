@@ -2893,12 +2893,21 @@ Available developer commands:
   }
 
   // ==========================================================================
-  // SECTION 5: NATIVE ZEPHYR RTOS BINARY CONTAINER COMPILER (.BIN)
+  // SECTION 5: BINARY CONTAINER COMPILER (.BIN) - GOODIX GR5526 / ZEPHYR TLV
   // ==========================================================================
   /**
    * buildCmfBinBuffer
-   * Compiles the current watchface vector state into an official Zephyr RTOS
-   * firmware binary package (.bin) for CMF Watch devices.
+   * Compiles the current watchface vector state into a firmware binary package (.bin).
+   * 
+   * HARDWARE ARCHITECTURE & GOODIX GR5526 RTOS NOTES:
+   * - SoC Hardware: Goodix GR5525/GR5526 with proprietary Linwear / Goodix RTOS.
+   * - Graphics Engine: Goodix GDI / FastLZ compressed tile pipeline (466x466 px).
+   *   Uncompressed full RGB565 raw framebuffers (>424 KB) bypass GDI tile descriptors,
+   *   triggering Watchdog Timer (WDT) hardware reboots & auto-formatting safety fallbacks.
+   * - Memory Mapping: Resource pointers are relative to resource block start or SPI Flash
+   *   mapped memory addresses (0x08xxxxxx / 0x60xxxxxx), rather than file-absolute byte offsets.
+   * - Integrity Checksums: Goodix OTA protocol mandates CRC16-CCITT / additive block digests.
+   * - TLV Specification: Embedded 32-bit (4-byte) aligned TLV tree structure (resOffset = 76B).
    * 
    * BINARY SPECIFICATION & MEMORY LAYOUT:
    * 1. 36-Byte Header:
@@ -2915,7 +2924,7 @@ Available developer commands:
    *    - Struct contains coordinate offsets, screen dimensions, and resource pointers.
    * 3. Resource Payload:
    *    - 8-Byte Resource Descriptor: Format (RGB565=4), Width, Height, and Byte Length.
-   *    - Raw RGB565 Framebuffer (2 bytes per pixel, 16-bit color, Little-Endian).
+   *    - 16-bit RGB565 Framebuffer (2 bytes per pixel, Little-Endian).
    * 4. 36-Byte Footer:
    *    - Identical mirror of the 36-byte header for hardware integrity verification.
    */
@@ -2975,8 +2984,8 @@ Available developer commands:
     meta[11] = 0; meta[12] = 0; meta[13] = 0;
 
     // Build struct payload padded to 28 bytes for 32-bit word alignment
-    // (Struct 28B -> StructTlv 31B -> ImgTlv 34B -> MainTlv 37B -> RootTlv 40B -> resOffset = 36 + 40 = 76B)
-    const resOffset = 76; // Strictly 4-byte (32-bit) aligned resource offset
+    // (Struct 28B -> StructTlv 31B -> ImgTlv 34B -> MainTlv 37B -> RootTlv 40B -> resOffset = 40B relative to body start)
+    const resOffset = 40; // Relative to body start (36 + 40 = 76B start of resource payload)
     const structPayload = new Uint8Array(28); // 25 bytes data + 3 bytes zero padding
     const structView = new DataView(structPayload.buffer);
     structView.setInt16(0, 0, true); // x = 0
@@ -2984,7 +2993,7 @@ Available developer commands:
     structPayload.set(meta, 4);
     structPayload[18] = 1; // refType = 1 (single image reference)
     structView.setUint16(19, 1, true); // count = 1
-    structView.setUint32(21, resOffset, true); // byte offset of resource in file (76)
+    structView.setUint32(21, resOffset, true); // byte offset of resource relative to body start (40)
 
     // Pack Struct TLV: [TAG(1B), LEN_L(1B), LEN_H(1B), PAYLOAD(28B)] -> 31 bytes
     const structTlv = new Uint8Array(3 + structPayload.length);
