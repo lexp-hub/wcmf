@@ -3613,14 +3613,13 @@ Available developer commands:
       // ======================================================================
       // PHASE 6: WATCH-DRIVEN OTA PACKET STREAM (wfChunkReq -> wfChunkWrite)
       // ======================================================================
-      // In the Goodix / CMF OTA architecture, the WATCH drives the transmission
-      // timing by issuing `wfChunkReq` notifications specifying the byte `offset`
-      // and requested window `size`. The host responds with `wfChunkWrite`.
-      // "1.21 GIGAWATTS?! GREAT SCOTT!" - Back to the Future (1985) (╯°□°)╯︵ ┻━┻
+      // PHASE 6: WATCH-DRIVEN OTA PACKET STREAM (STRICT FIFO QUEUE)
+      // ======================================================================
       await new Promise((resolve, reject) => {
         let stallTimer = null;
+        let transferPromise = Promise.resolve(); // Strict FIFO Queue to serialize GATT writes
+        let lastHandledOffset = -1;
 
-        // 30-second watchdog timer to catch stalled BLE connections
         const resetStall = () => {
           clearTimeout(stallTimer);
           stallTimer = setTimeout(() => {
@@ -3638,49 +3637,46 @@ Available developer commands:
 
         resetStall();
 
-        // Handle chunk requests from watch (Watch-driven OTA sync flow)
-        handlers.set(CMF_CMD.wfChunkReq, async chunkReqBytes => {
-          if (chunkReqBytes.length < 8) {
-            cleanupHandlers();
-            reject(new Error(`Short chunk request from watch: ${bytesToHex(chunkReqBytes)}`));
-            return;
-          }
+        // Handle chunk requests from watch with sequential FIFO queue & deduplication
+        handlers.set(CMF_CMD.wfChunkReq, chunkReqBytes => {
+          if (chunkReqBytes.length < 8) return;
           resetStall();
 
           const reqView = new DataView(chunkReqBytes.buffer, chunkReqBytes.byteOffset);
           const offset = reqView.getUint32(0, true);
           const size = reqView.getUint32(4, true);
-          const pct = chunkReqBytes.length > 8 ? chunkReqBytes[8] : Math.min(100, Math.round((offset / totalBytes) * 100));
 
-          // Terminal condition: all binary bytes transmitted
           if (offset >= totalBytes) {
             setBleProgress(100);
             return;
           }
 
-          if (offset + size > totalBytes) {
-            cleanupHandlers();
-            reject(new Error(`Chunk request out of bounds: offset ${offset} + size ${size} > total ${totalBytes}`));
-            return;
-          }
+          // Enqueue GATT transmission so concurrent BLE notifications never collide
+          transferPromise = transferPromise.then(async () => {
+            // Deduplicate pings for the same offset already sent
+            if (offset === lastHandledOffset && offset > 0) return;
+            lastHandledOffset = offset;
 
-          setBleProgress(pct);
-          setBleLogs(prev => [
-            ...prev.slice(-5),
-            `[TX] Transmitting chunk @ ${(offset / 1024).toFixed(1)} KB / ${(totalBytes / 1024).toFixed(1)} KB (${pct}%)`
-          ]);
+            const bytesToSend = Math.min(size, totalBytes - offset);
+            if (bytesToSend <= 0) return;
 
-          try {
-            const chunkSlice = binUint8.slice(offset, offset + size);
+            const pct = Math.min(99, Math.round((offset / totalBytes) * 100));
+            setBleProgress(pct);
+            setBleLogs(prev => [
+              ...prev.slice(-5),
+              `[TX] Transmitting chunk @ ${(offset / 1024).toFixed(1)} KB / ${(totalBytes / 1024).toFixed(1)} KB (${pct}%)`
+            ]);
+
+            const chunkSlice = binUint8.slice(offset, offset + bytesToSend);
             await sendData(CMF_CMD.wfChunkWrite, chunkSlice, subProgress => {
-              const currentTotal = offset + size * subProgress;
+              const currentTotal = offset + bytesToSend * subProgress;
               const subPct = Math.min(99, Math.round((currentTotal / totalBytes) * 100));
               setBleProgress(subPct);
             });
-          } catch (writeErr) {
+          }).catch(err => {
             cleanupHandlers();
-            reject(writeErr);
-          }
+            reject(err);
+          });
         });
 
         // ====================================================================
