@@ -270,15 +270,20 @@
         <button id="btn-close-rickroll" style="background:transparent; border:none; color:#8E8E93; font-size:18px; font-weight:bold; cursor:pointer; hover:color:#FFF;">✕</button>
       </div>
 
-      <!-- YouTube Embed with autoplay -->
+      <!-- Native MP4 Video Player with Autoplay & Controls -->
       <div style="position:relative; width:100%; padding-top:56.25%; border-radius:10px; overflow:hidden; border:1px solid #27272A; background:#000;">
-        <iframe
-          src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?autoplay=1&enablejsapi=1&playsinline=1&controls=1"
-          title="Rick Astley - Never Gonna Give You Up"
-          style="position:absolute; top:0; left:0; width:100%; height:100%; border:0;"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowfullscreen
-        ></iframe>
+        <video
+          id="rickroll-native-video"
+          autoplay
+          playsinline
+          controls
+          loop
+          style="position:absolute; top:0; left:0; width:100%; height:100%; object-fit:contain; background:#000;"
+        >
+          <source src="rickroll.mp4" type="video/mp4">
+          <source src="Rick%20Astley%20-%20Never%20Gonna%20Give%20You%20Up%20(Official%20Video)%20(4K%20Remaster).mp4" type="video/mp4">
+          Your browser does not support HTML5 MP4 video.
+        </video>
       </div>
 
       <!-- Live Karaoke Subtitle Banner -->
@@ -293,6 +298,20 @@
 
     document.body.appendChild(rickrollModal);
 
+    const videoEl = document.getElementById('rickroll-native-video');
+    if (videoEl) {
+      videoEl.volume = 0.85;
+      const playPromise = videoEl.play();
+      if (playPromise !== undefined) {
+        playPromise.then(() => {
+          stopChiptune();
+        }).catch(err => {
+          console.warn('[Rickroll] Native video autoplay blocked, starting chiptune fallback:', err);
+          playRickChiptune();
+        });
+      }
+    }
+
     document.getElementById('btn-close-rickroll').addEventListener('click', () => {
       restoreReality();
     });
@@ -306,9 +325,6 @@
     createOverlay();
     createRickrollModal();
     spawnDiscoParticles();
-
-    // Start 8-bit chiptune background synth
-    playRickChiptune();
 
     if (animFrameId) cancelAnimationFrame(animFrameId);
     let lastLyricTime = 0;
@@ -552,9 +568,20 @@
     stopChiptune();
     cleanupGravity();
 
-    // Remove Rickroll Modal
-    if (rickrollModal && rickrollModal.parentElement) {
-      rickrollModal.parentElement.removeChild(rickrollModal);
+    // Remove Rickroll Modal and stop video
+    if (rickrollModal) {
+      const videoEl = rickrollModal.querySelector('#rickroll-native-video');
+      if (videoEl) {
+        try {
+          videoEl.pause();
+          videoEl.currentTime = 0;
+          videoEl.src = '';
+          videoEl.load();
+        } catch (e) {}
+      }
+      if (rickrollModal.parentElement) {
+        rickrollModal.parentElement.removeChild(rickrollModal);
+      }
       rickrollModal = null;
     }
 
