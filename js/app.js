@@ -2687,6 +2687,77 @@ Available developer commands:
     return (t ^ 4294967295) >>> 0;
   }
 
+  // rawCrc32: IEEE 0xEDB88320 reflected, init=0, NO final inversion (CMF / Goodix bootloader & FMC standard)
+  function rawCrc32(bytes) {
+    let c = 0;
+    for (let i = 0; i < bytes.length; i++) {
+      c = CRC32_TABLE[(c ^ bytes[i]) & 255] ^ (c >>> 8);
+    }
+    return c >>> 0;
+  }
+
+  // lz4Compress: Standard LZ4 block compression for CMF Watch Pro 2 GDI / LVGL resource payloads
+  function lz4Compress(src) {
+    const dst = [];
+
+    function writeSeq(litStart, litEnd, off, mLen) {
+      const litLen = litEnd - litStart;
+      const ml = off > 0 ? mLen - 4 : 0;
+      let tok = litLen >= 15 ? 0xf0 : litLen << 4;
+
+      if (off > 0) tok |= ml >= 15 ? 15 : ml;
+      dst.push(tok);
+      for (let l = litLen - 15; litLen >= 15 && l >= 0; l -= 255) {
+        if (l >= 255) dst.push(255);
+        else {
+          dst.push(l);
+          break;
+        }
+      }
+      for (let i = litStart; i < litEnd; i++) dst.push(src[i]);
+      if (off > 0) {
+        dst.push(off & 0xff, off >> 8);
+        for (let l = ml - 15; ml >= 15 && l >= 0; l -= 255) {
+          if (l >= 255) dst.push(255);
+          else {
+            dst.push(l);
+            break;
+          }
+        }
+      }
+    }
+    const n = src.length;
+
+    if (n < 13) {
+      writeSeq(0, n, 0, 0);
+      return new Uint8Array(dst);
+    }
+    const rd = (p) => src[p] | (src[p + 1] << 8) | (src[p + 2] << 16) | (src[p + 3] << 24);
+    const table = new Int32Array(1 << 14).fill(-1);
+    let litStart = 0;
+    let i = 0;
+    const limit = n - 5;
+
+    while (i < n - 12) {
+      const h = (Math.imul(rd(i), 2654435761) >>> 18) & 0x3fff;
+      const cand = table[h];
+
+      table[h] = i;
+      if (cand >= 0 && i - cand <= 65535 && rd(cand) === rd(i)) {
+        let mLen = 4;
+
+        while (i + mLen < limit && src[cand + mLen] === src[i + mLen]) mLen++;
+        writeSeq(litStart, i, i - cand, mLen);
+        i += mLen;
+        litStart = i;
+        continue;
+      }
+      i++;
+    }
+    writeSeq(litStart, n, 0, 0);
+    return new Uint8Array(dst);
+  }
+
   function uint32ToLeBytes(val) {
     const b = new Uint8Array(4);
     new DataView(b.buffer).setUint32(0, val, true);
@@ -2941,7 +3012,7 @@ Available developer commands:
       backgroundColor
     });
 
-    // 1. Convert RGBA to 16-bit RGB565 Framebuffer (Native Zephyr RTOS display format)
+    // 1. Convert RGBA to 16-bit RGB565 Framebuffer (Little-Endian)
     // "I've seen things you people wouldn't believe... Watchfaces flashing in the dark near Tannhäuser Gate." (•_•)
     const imgData = expCtx.getImageData(0, 0, canvasWidth, canvasHeight);
     const rgba = imgData.data;
@@ -2957,74 +3028,74 @@ Available developer commands:
       rgb565[i * 2 + 1] = (val >> 8) & 0xFF; // Little-Endian high byte
     }
 
-    // 2. Resource descriptor for full-screen framebuffer (8 bytes)
+    // 2. Compress RGB565 using standard LZ4 block compression (mandatory for CMF Watch Pro 2 / Goodix GDI)
+    const compressedRgb565 = lz4Compress(rgb565);
+
+    // 3. Resource descriptor (8 bytes): Format (cf=4 for RGB565), Width, Height, and Compressed Size
     // "Hold onto your butts..." - Jurassic Park (1993) (╯°□°)╯︵ ┻━┻
     const cf = 4; // Format code: 4 = RGB565
     const resHdrVal = (cf & 31) | ((canvasWidth & 2047) << 10) | ((canvasHeight & 2047) << 21);
     const resHdr = new Uint8Array(8);
     const resHdrView = new DataView(resHdr.buffer);
     resHdrView.setUint32(0, resHdrVal >>> 0, true);
-    resHdrView.setUint32(4, rgb565.length, true);
+    resHdrView.setUint32(4, compressedRgb565.length, true);
 
-    const resourcePayload = concatArrays(resHdr, rgb565);
+    const resourcePayload = concatArrays(resHdr, compressedRgb565);
 
-    // 3. Build TLV Tree structure (Zephyr RTOS Type-Length-Value hierarchy)
+    // 4. Build TLV Tree structure (CMF Watch Pro 2 / FMC specification §9.6a)
     const TAG_ROOT = 0x20;
     const TAG_MAIN = 0x21;
     const TAG_IMAGE = 0x30;
     const TAG_STRUCT = 0x01;
 
-    // Metadata block (14 bytes): w(2B), h(2B), rgb(3B), flags(1B), res(1B), source(1B), sub(1B), max(3B)
-    const meta = new Uint8Array(14);
-    const metaView = new DataView(meta.buffer);
-    metaView.setUint16(0, canvasWidth, true);
-    metaView.setUint16(2, canvasHeight, true);
-    meta[4] = 255; meta[5] = 255; meta[6] = 255; // RGB tint
-    meta[7] = 0; meta[8] = 0; meta[9] = 0; meta[10] = 0;
-    meta[11] = 0; meta[12] = 0; meta[13] = 0;
+    // Struct payload (25 bytes):
+    // - [0..3]   : Coordinates x (int16 LE = 0), y (int16 LE = 0)
+    // - [4..17]  : Metadata (14B): w(2B), h(2B), rgb tint(3B), flags(7B)
+    // - [18..24] : RefTail (7B): refType(0x01), count(uint16 LE = 1), resOffset(uint32 LE)
+    const HEADER_SIZE = 36;
+    const resOffset = HEADER_SIZE + 37; // 36 (header) + 37 (root TLV) = 73 bytes (absolute file offset)
 
-    // Build struct payload padded to 28 bytes for 32-bit word alignment
-    // (Struct 28B -> StructTlv 31B -> ImgTlv 34B -> MainTlv 37B -> RootTlv 40B -> resOffset = 40B relative to body start)
-    const resOffset = 40; // Relative to body start (36 + 40 = 76B start of resource payload)
-    const structPayload = new Uint8Array(28); // 25 bytes data + 3 bytes zero padding
+    const structPayload = new Uint8Array(25);
     const structView = new DataView(structPayload.buffer);
     structView.setInt16(0, 0, true); // x = 0
     structView.setInt16(2, 0, true); // y = 0
-    structPayload.set(meta, 4);
-    structPayload[18] = 1; // refType = 1 (single image reference)
+    structView.setUint16(4, canvasWidth, true);
+    structView.setUint16(6, canvasHeight, true);
+    structPayload[8] = 255; structPayload[9] = 255; structPayload[10] = 255; // RGB tint
+    // [11..17] = 0 (flags, res, source, sub, max)
+    structPayload[18] = 0x01; // refType = 0x01 (single image reference)
     structView.setUint16(19, 1, true); // count = 1
-    structView.setUint32(21, resOffset, true); // byte offset of resource relative to body start (40)
+    structView.setUint32(21, resOffset, true); // byte offset of resource in file (73)
 
-    // Pack Struct TLV: [TAG(1B), LEN_L(1B), LEN_H(1B), PAYLOAD(28B)] -> 31 bytes
+    // Pack Struct TLV: [TAG(1B), LEN_L(1B), LEN_H(1B), PAYLOAD(25B)] -> 28 bytes
     const structTlv = new Uint8Array(3 + structPayload.length);
     structTlv[0] = TAG_STRUCT;
     structTlv[1] = structPayload.length & 0xFF;
     structTlv[2] = (structPayload.length >> 8) & 0xFF;
     structTlv.set(structPayload, 3);
 
-    // Pack Image TLV: [TAG(1B), LEN_L(1B), LEN_H(1B), PAYLOAD(31B)] -> 34 bytes
+    // Pack Image TLV: [TAG(1B), LEN_L(1B), LEN_H(1B), PAYLOAD(28B)] -> 31 bytes
     const imgTlv = new Uint8Array(3 + structTlv.length);
     imgTlv[0] = TAG_IMAGE;
     imgTlv[1] = structTlv.length & 0xFF;
     imgTlv[2] = (structTlv.length >> 8) & 0xFF;
     imgTlv.set(structTlv, 3);
 
-    // Pack Main Screen TLV: [TAG(1B), LEN_L(1B), LEN_H(1B), PAYLOAD(34B)] -> 37 bytes
+    // Pack Main Screen TLV: [TAG(1B), LEN_L(1B), LEN_H(1B), PAYLOAD(31B)] -> 34 bytes
     const mainScreenTlv = new Uint8Array(3 + imgTlv.length);
     mainScreenTlv[0] = TAG_MAIN;
     mainScreenTlv[1] = imgTlv.length & 0xFF;
     mainScreenTlv[2] = (imgTlv.length >> 8) & 0xFF;
     mainScreenTlv.set(imgTlv, 3);
 
-    // Pack Root TLV: [TAG(1B), LEN_L(1B), LEN_H(1B), PAYLOAD(37B)] -> 40 bytes total
+    // Pack Root TLV: [TAG(1B), LEN_L(1B), LEN_H(1B), PAYLOAD(34B)] -> 37 bytes total
     const rootTlv = new Uint8Array(3 + mainScreenTlv.length);
     rootTlv[0] = TAG_ROOT;
     rootTlv[1] = mainScreenTlv.length & 0xFF;
     rootTlv[2] = (mainScreenTlv.length >> 8) & 0xFF;
     rootTlv.set(mainScreenTlv, 3);
 
-    // 4. Build 36-Byte Header
-    const HEADER_SIZE = 36;
+    // 5. Build 36-Byte Header
     const totalFileSize = HEADER_SIZE + rootTlv.length + resourcePayload.length + HEADER_SIZE;
     const header = new Uint8Array(HEADER_SIZE);
     const headerView = new DataView(header.buffer);
@@ -3038,16 +3109,16 @@ Available developer commands:
     const nameBytes = new TextEncoder().encode(faceName).slice(0, 15);
     header.set(nameBytes, 8);
 
-    // Offset 24: Total file size minus 36 bytes footer
+    // Offset 24 (0x18): Total file size minus 36 bytes footer
     headerView.setUint32(24, totalFileSize - HEADER_SIZE, true);
-    // Offset 28: Total resources payload length
+    // Offset 28 (0x1C): Total resources payload length
     headerView.setUint32(28, resourcePayload.length, true);
-    // Offset 32: CRC32 of resources payload
-    headerView.setUint32(32, computeCrc32(resourcePayload), true);
-    // Offset 0: CRC32 of header[4..36] + rootTlv
-    headerView.setUint32(0, computeCrc32(concatArrays(header.slice(4, 36), rootTlv)), true);
+    // Offset 32 (0x20): rawCrc32 of resources payload (Goodix / FMC standard)
+    headerView.setUint32(32, rawCrc32(resourcePayload), true);
+    // Offset 0 (0x00): rawCrc32 of header[4..36] + rootTlv
+    headerView.setUint32(0, rawCrc32(concatArrays(header.slice(4, 36), rootTlv)), true);
 
-    // 5. Build Complete Binary: Header + Root TLV + Resource Data + Footer (identical to header)
+    // 6. Build Complete Binary: Header + Root TLV + Resource Data + Footer (identical to header)
     const footer = new Uint8Array(header);
     const finalBinBuffer = concatArrays(header, rootTlv, resourcePayload, footer);
 
