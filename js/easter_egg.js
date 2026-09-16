@@ -1,27 +1,29 @@
 /**
- * WCMF Studio — Easter Egg Engine: Pac-Man Chomp & Google Gravity Chaos
- * Combines authentic 8-bit Pac-Man text-chomping with a full 2D Google Gravity physics simulation.
- * 100% non-destructive: gracefully restores all DOM elements without altering React state or project data.
+ * WCMF Studio — Easter Egg Engine: Rickroll & Google Gravity Chaos
+ * Never gonna give you up, never gonna let you down!
+ * Features full Rickroll video, 8-bit chiptune synthesizer, dancing lyrics,
+ * plus 2D physics Google Gravity simulation.
+ * 100% non-destructive: restores cleanly without altering React state or project data.
  */
 
 (function () {
   'use strict';
 
-  let activeMode = null; // 'pacman' | 'gravity' | null
+  let activeMode = null; // 'rickroll' | 'gravity' | null
   let animFrameId = null;
   let audioCtx = null;
   let overlayCanvas = null;
   let ctx = null;
   let hudElement = null;
-  let score = 0;
-  let chompedElements = new Set();
+  let rickrollModal = null;
+  let melodyTimeout = null;
   let physicsItems = [];
   let isDraggingItem = null;
   let dragOffset = { x: 0, y: 0 };
   let lastMouse = { x: 0, y: 0, vx: 0, vy: 0, time: 0 };
 
   // ==========================================================================
-  // 1. RETRO WEB AUDIO SYNTHESIZER
+  // 1. RETRO WEB AUDIO SYNTHESIZER: NEVER GONNA GIVE YOU UP CHIPTUNE
   // ==========================================================================
   function getAudioContext() {
     if (!audioCtx) {
@@ -36,7 +38,8 @@
     return audioCtx;
   }
 
-  function playTone(freq, type = 'triangle', duration = 0.08, volume = 0.15) {
+  function playTone(freq, type = 'square', duration = 0.15, volume = 0.14) {
+    if (freq <= 0) return;
     try {
       const ac = getAudioContext();
       if (!ac) return;
@@ -56,22 +59,6 @@
     } catch (e) {}
   }
 
-  let wakaToggle = false;
-  function playWaka() {
-    wakaToggle = !wakaToggle;
-    playTone(wakaToggle ? 360 : 490, 'triangle', 0.09, 0.18);
-  }
-
-  function playFruitEat() {
-    try {
-      const ac = getAudioContext();
-      if (!ac) return;
-      [580, 680, 780, 920].forEach((f, idx) => {
-        setTimeout(() => playTone(f, 'square', 0.08, 0.12), idx * 40);
-      });
-    } catch (e) {}
-  }
-
   function playCrashSound() {
     try {
       const ac = getAudioContext();
@@ -79,8 +66,8 @@
       const osc = ac.createOscillator();
       const gain = ac.createGain();
       osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(140, ac.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(30, ac.currentTime + 0.35);
+      osc.frequency.setValueAtTime(160, ac.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(35, ac.currentTime + 0.35);
 
       gain.gain.setValueAtTime(0.3, ac.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.01, ac.currentTime + 0.35);
@@ -92,11 +79,57 @@
     } catch (e) {}
   }
 
-  function playRetroJingle() {
-    const notes = [493.88, 987.77, 739.99, 622.25, 987.77, 739.99, 622.25];
-    notes.forEach((freq, idx) => {
-      setTimeout(() => playTone(freq, 'square', 0.12, 0.12), idx * 110);
-    });
+  // Iconic Never Gonna Give You Up notes
+  const RICK_MELODY = [
+    { f: 293.66, d: 0.15 }, // D4
+    { f: 329.63, d: 0.15 }, // E4
+    { f: 392.00, d: 0.15 }, // G4
+    { f: 329.63, d: 0.15 }, // E4
+    { f: 493.88, d: 0.35 }, // B4 - Ne-ver
+    { f: 493.88, d: 0.35 }, // B4 - gon-na
+    { f: 440.00, d: 0.50 }, // A4 - give you up
+    { f: 0,      d: 0.15 },
+    { f: 293.66, d: 0.15 }, // D4
+    { f: 329.63, d: 0.15 }, // E4
+    { f: 392.00, d: 0.15 }, // G4
+    { f: 329.63, d: 0.15 }, // E4
+    { f: 440.00, d: 0.35 }, // A4 - Ne-ver
+    { f: 440.00, d: 0.35 }, // A4 - gon-na
+    { f: 392.00, d: 0.50 }, // G4 - let you down
+    { f: 0,      d: 0.15 },
+    { f: 293.66, d: 0.15 }, // D4
+    { f: 329.63, d: 0.15 }, // E4
+    { f: 392.00, d: 0.15 }, // G4
+    { f: 329.63, d: 0.15 }, // E4
+    { f: 392.00, d: 0.35 }, // G4 - Ne-ver
+    { f: 440.00, d: 0.35 }, // A4 - gon-na
+    { f: 369.99, d: 0.35 }, // F#4 - run a-
+    { f: 329.63, d: 0.30 }, // E4 - round
+    { f: 293.66, d: 0.35 }, // D4 - and de-
+    { f: 329.63, d: 0.30 }, // E4 - sert
+    { f: 392.00, d: 0.60 }  // G4 - you!
+  ];
+
+  function playRickChiptune(index = 0) {
+    if (activeMode !== 'rickroll') return;
+    if (index >= RICK_MELODY.length) {
+      melodyTimeout = setTimeout(() => playRickChiptune(0), 1200);
+      return;
+    }
+    const note = RICK_MELODY[index];
+    if (note.f > 0) {
+      playTone(note.f, 'square', note.d, 0.12);
+    }
+    melodyTimeout = setTimeout(() => {
+      playRickChiptune(index + 1);
+    }, note.d * 1000 + 40);
+  }
+
+  function stopChiptune() {
+    if (melodyTimeout) {
+      clearTimeout(melodyTimeout);
+      melodyTimeout = null;
+    }
   }
 
   // ==========================================================================
@@ -143,15 +176,15 @@
 
     hudElement.innerHTML = `
       <div style="display:flex; align-items:center; gap:8px;">
-        <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#FF4400; box-shadow:0 0 8px #FF4400;"></span>
-        <span style="font-weight:bold; letter-spacing:1px; color:#FF4400;">CHAOS PROTOCOL</span>
+        <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#FF4400; box-shadow:0 0 8px #FF4400; animation:pulse 1s infinite;"></span>
+        <span style="font-weight:bold; letter-spacing:1px; color:#FF4400;">RICKROLL PROTOCOL</span>
       </div>
-      <div id="wcmf-easter-score" style="background:#18181B; padding:3px 8px; border-radius:6px; border:1px solid #27272A; font-weight:bold; color:#FFD700;">
-        SCORE: 00000
+      <div id="wcmf-easter-status" style="background:#18181B; padding:3px 8px; border-radius:6px; border:1px solid #27272A; font-weight:bold; color:#FFD700;">
+        NEVER GONNA GIVE YOU UP 🎵
       </div>
       <div style="display:flex; gap:6px;">
-        <button id="btn-easter-pacman" style="background:#27272A; color:#FFF; border:1px solid #3F3F46; padding:4px 10px; border-radius:6px; cursor:pointer; font-size:11px; font-weight:bold;">
-          🟡 PAC-MAN
+        <button id="btn-easter-rickroll" style="background:#27272A; color:#FFF; border:1px solid #3F3F46; padding:4px 10px; border-radius:6px; cursor:pointer; font-size:11px; font-weight:bold;">
+          🕺 RICKROLL
         </button>
         <button id="btn-easter-gravity" style="background:#27272A; color:#FFF; border:1px solid #3F3F46; padding:4px 10px; border-radius:6px; cursor:pointer; font-size:11px; font-weight:bold;">
           ⚡ GRAVITY
@@ -164,7 +197,7 @@
 
     document.body.appendChild(hudElement);
 
-    document.getElementById('btn-easter-pacman').addEventListener('click', () => startPacmanMode());
+    document.getElementById('btn-easter-rickroll').addEventListener('click', () => startRickrollMode());
     document.getElementById('btn-easter-gravity').addEventListener('click', () => startGravityMode());
     document.getElementById('btn-easter-restore').addEventListener('click', () => restoreReality());
   }
@@ -178,273 +211,143 @@
     }
   }
 
-  function updateScore(pts) {
-    score += pts;
-    const scoreEl = document.getElementById('wcmf-easter-score');
-    if (scoreEl) {
-      scoreEl.textContent = `SCORE: ${score.toString().padStart(5, '0')}`;
-    }
-  }
-
   // ==========================================================================
-  // 3. MODE 1: PAC-MAN TEXT CHOMPER
+  // 3. MODE 1: RICKROLL STAGE & DANCING LYRICS
   // ==========================================================================
-  let pacman = {
-    x: 0,
-    y: 0,
-    vx: 5,
-    vy: 0,
-    radius: 28,
-    angle: 0,
-    mouthAngle: 0.25,
-    mouthOpening: true,
-    targetNodes: [],
-    particles: []
-  };
-
-  let ghosts = [
-    { name: 'Blinky', color: '#FF0000', x: -100, y: 0, delay: 18 },
-    { name: 'Pinky',  color: '#FFB8DE', x: -160, y: 0, delay: 36 },
-    { name: 'Inky',   color: '#00FFFF', x: -220, y: 0, delay: 54 },
-    { name: 'Clyde',  color: '#FFB847', x: -280, y: 0, delay: 72 }
+  const LYRICS = [
+    "NEVER GONNA GIVE YOU UP 🕺",
+    "NEVER GONNA LET YOU DOWN 🎵",
+    "NEVER GONNA RUN AROUND AND DESERT YOU ✨",
+    "NEVER GONNA MAKE YOU CRY 🎤",
+    "NEVER GONNA SAY GOODBYE 🎶",
+    "NEVER GONNA TELL A LIE AND HURT YOU ❤️"
   ];
 
-  function collectTextTargets() {
-    const targets = [];
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
-    let node;
-    while ((node = walker.nextNode())) {
-      const text = node.textContent.trim();
-      const parent = node.parentElement;
-      if (!text || !parent || parent.closest('#wcmf-easter-hud')) continue;
+  let lyricIndex = 0;
+  let discoParticles = [];
 
-      const rect = parent.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0 && rect.top >= 0 && rect.bottom <= window.innerHeight) {
-        targets.push({
-          node,
-          parent,
-          originalText: node.textContent,
-          rect
-        });
-      }
+  function spawnDiscoParticles() {
+    discoParticles = [];
+    for (let i = 0; i < 40; i++) {
+      discoParticles.push({
+        x: Math.random() * window.innerWidth,
+        y: Math.random() * window.innerHeight,
+        vx: (Math.random() - 0.5) * 3,
+        vy: -Math.random() * 2 - 1,
+        size: Math.random() * 4 + 2,
+        color: ['#FF4400', '#FFD700', '#00FFFF', '#FFFFFF', '#FFB8DE'][Math.floor(Math.random() * 5)],
+        alpha: Math.random() * 0.8 + 0.2
+      });
     }
-    // Shuffle targets to create a fun zigzag path
-    return targets.sort((a, b) => a.rect.top - b.rect.top || a.rect.left - b.rect.left);
   }
 
-  function startPacmanMode() {
+  function createRickrollModal() {
+    if (rickrollModal) return;
+
+    rickrollModal = document.createElement('div');
+    rickrollModal.id = 'wcmf-rickroll-modal';
+    rickrollModal.style.position = 'fixed';
+    rickrollModal.style.top = '50%';
+    rickrollModal.style.left = '50%';
+    rickrollModal.style.transform = 'translate(-50%, -50%)';
+    rickrollModal.style.zIndex = '99999';
+    rickrollModal.style.width = 'min(92vw, 640px)';
+    rickrollModal.style.background = '#0E0E10';
+    rickrollModal.style.border = '2px solid #FF4400';
+    rickrollModal.style.borderRadius = '16px';
+    rickrollModal.style.padding = '18px';
+    rickrollModal.style.boxShadow = '0 0 50px rgba(255, 68, 0, 0.5), 0 20px 60px rgba(0,0,0,0.9)';
+    rickrollModal.style.textAlign = 'center';
+    rickrollModal.style.color = '#FFFFFF';
+    rickrollModal.style.fontFamily = 'monospace';
+
+    rickrollModal.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid #222; padding-bottom:8px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:18px;">🕺</span>
+          <span style="font-weight:bold; color:#FF4400; font-size:13px; letter-spacing:1px;">YOU JUST GOT RICKROLLED</span>
+        </div>
+        <button id="btn-close-rickroll" style="background:transparent; border:none; color:#8E8E93; font-size:18px; font-weight:bold; cursor:pointer; hover:color:#FFF;">✕</button>
+      </div>
+
+      <!-- YouTube Embed with autoplay -->
+      <div style="position:relative; width:100%; padding-top:56.25%; border-radius:10px; overflow:hidden; border:1px solid #27272A; background:#000;">
+        <iframe
+          src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?autoplay=1&enablejsapi=1&playsinline=1&controls=1"
+          title="Rick Astley - Never Gonna Give You Up"
+          style="position:absolute; top:0; left:0; width:100%; height:100%; border:0;"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowfullscreen
+        ></iframe>
+      </div>
+
+      <!-- Live Karaoke Subtitle Banner -->
+      <div id="rickroll-live-lyrics" style="margin-top:14px; font-size:14px; font-weight:bold; color:#FFD700; text-transform:uppercase; letter-spacing:1.5px; text-shadow:0 0 10px rgba(255, 215, 0, 0.6);">
+        NEVER GONNA GIVE YOU UP 🕺
+      </div>
+
+      <div style="margin-top:8px; font-size:11px; color:#8E8E93;">
+        Press <span style="color:#FFF; font-weight:bold; background:#242428; padding:2px 6px; border-radius:4px;">ESC</span> to return to your watchface studio
+      </div>
+    `;
+
+    document.body.appendChild(rickrollModal);
+
+    document.getElementById('btn-close-rickroll').addEventListener('click', () => {
+      restoreReality();
+    });
+  }
+
+  function startRickrollMode() {
     if (activeMode === 'gravity') {
       cleanupGravity();
     }
-    activeMode = 'pacman';
+    activeMode = 'rickroll';
     createOverlay();
-    playRetroJingle();
+    createRickrollModal();
+    spawnDiscoParticles();
 
-    pacman.targetNodes = collectTextTargets();
-    pacman.x = window.innerWidth + 50;
-    pacman.y = 80;
-    pacman.vx = -7;
-    pacman.vy = 0;
-    pacman.angle = Math.PI; // Face left
-    pacman.particles = [];
-
-    ghosts.forEach((g, i) => {
-      g.x = pacman.x + (i + 1) * 60;
-      g.y = pacman.y;
-    });
+    // Start 8-bit chiptune background synth
+    playRickChiptune();
 
     if (animFrameId) cancelAnimationFrame(animFrameId);
-    let lastWakaTime = 0;
-    let targetIndex = 0;
+    let lastLyricTime = 0;
 
-    function pacmanLoop(time) {
-      if (activeMode !== 'pacman') return;
+    function rickrollLoop(time) {
+      if (activeMode !== 'rickroll') return;
       ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
 
-      // Mouth animation
-      if (pacman.mouthOpening) {
-        pacman.mouthAngle += 0.035;
-        if (pacman.mouthAngle >= 0.35) pacman.mouthOpening = false;
-      } else {
-        pacman.mouthAngle -= 0.035;
-        if (pacman.mouthAngle <= 0.02) pacman.mouthOpening = true;
-      }
-
-      // Audio chomp
-      if (time - lastWakaTime > 140) {
-        playWaka();
-        lastWakaTime = time;
-      }
-
-      // Track toward targets across the screen
-      if (pacman.targetNodes.length > 0 && targetIndex < pacman.targetNodes.length) {
-        const target = pacman.targetNodes[targetIndex];
-        const tx = target.rect.left + target.rect.width / 2;
-        const ty = target.rect.top + target.rect.height / 2;
-
-        const dx = tx - pacman.x;
-        const dy = ty - pacman.y;
-        const dist = Math.hypot(dx, dy);
-
-        if (dist < 35) {
-          // CHOMP the text!
-          if (!chompedElements.has(target.node)) {
-            chompedElements.add(target.node);
-            const words = target.node.textContent.split(' ');
-            if (words.length > 1) {
-              target.node.textContent = words.map(() => '•').join(' ');
-            } else {
-              target.node.textContent = '•••';
-            }
-            target.parent.style.transition = 'color 0.2s ease, opacity 0.2s ease';
-            target.parent.style.color = '#FF4400';
-            target.parent.style.opacity = '0.35';
-
-            updateScore(100);
-            playFruitEat();
-
-            // Spawn floating "+100" score
-            pacman.particles.push({
-              x: pacman.x,
-              y: pacman.y - 10,
-              vy: -1.5,
-              text: '+100',
-              alpha: 1.0,
-              color: '#FFD700'
-            });
-          }
-          targetIndex++;
-        } else {
-          // Steer towards target
-          pacman.vx += (dx / dist) * 0.4;
-          pacman.vy += (dy / dist) * 0.4;
-          const speed = Math.hypot(pacman.vx, pacman.vy);
-          const maxSpeed = 8;
-          if (speed > maxSpeed) {
-            pacman.vx = (pacman.vx / speed) * maxSpeed;
-            pacman.vy = (pacman.vy / speed) * maxSpeed;
-          }
-          pacman.angle = Math.atan2(pacman.vy, pacman.vx);
+      // Rotate lyrics every 2.4 seconds
+      if (time - lastLyricTime > 2400) {
+        lyricIndex = (lyricIndex + 1) % LYRICS.length;
+        const lyricEl = document.getElementById('rickroll-live-lyrics');
+        if (lyricEl) {
+          lyricEl.textContent = LYRICS[lyricIndex];
+          lyricEl.style.color = ['#FFD700', '#FF4400', '#00FFFF', '#30D158', '#FFB8DE'][lyricIndex % 5];
         }
-      } else {
-        // Roam across screen
-        if (pacman.x < -60) pacman.x = window.innerWidth + 60;
-        if (pacman.x > window.innerWidth + 60) pacman.x = -60;
-        if (pacman.y < 50 || pacman.y > window.innerHeight - 50) pacman.vy = -pacman.vy;
+        lastLyricTime = time;
       }
 
-      pacman.x += pacman.vx;
-      pacman.y += pacman.vy;
-
-      // Wrap around edges
-      if (pacman.x < -100) pacman.x = window.innerWidth + 80;
-      if (pacman.x > window.innerWidth + 100) pacman.x = -80;
-      if (pacman.y < 60) pacman.y = 60;
-      if (pacman.y > window.innerHeight - 40) pacman.y = window.innerHeight - 40;
-
-      // Update and follow ghosts
-      ghosts.forEach((g, idx) => {
-        const targetLeader = idx === 0 ? pacman : ghosts[idx - 1];
-        const gdx = targetLeader.x - g.x;
-        const gdy = targetLeader.y - g.y;
-        const gdist = Math.hypot(gdx, gdy);
-        if (gdist > 45) {
-          g.x += (gdx / gdist) * 6;
-          g.y += (gdy / gdist) * 6;
+      // Draw disco particles & equalizer waves
+      discoParticles.forEach(p => {
+        p.x += p.vx;
+        p.y += p.vy;
+        if (p.y < 0) {
+          p.y = window.innerHeight;
+          p.x = Math.random() * window.innerWidth;
         }
-        drawGhost(g.x, g.y, g.color, time);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.shadowColor = p.color;
+        ctx.shadowBlur = 12;
+        ctx.fill();
       });
 
-      // Draw Pac-Man
-      drawPacman(pacman.x, pacman.y, pacman.radius, pacman.angle, pacman.mouthAngle);
-
-      // Draw floating particles
-      for (let i = pacman.particles.length - 1; i >= 0; i--) {
-        const p = pacman.particles[i];
-        p.y += p.vy;
-        p.alpha -= 0.02;
-        if (p.alpha <= 0) {
-          pacman.particles.splice(i, 1);
-          continue;
-        }
-        ctx.save();
-        ctx.font = 'bold 14px monospace';
-        ctx.fillStyle = `rgba(255, 215, 0, ${p.alpha})`;
-        ctx.fillText(p.text, p.x - 15, p.y);
-        ctx.restore();
-      }
-
-      animFrameId = requestAnimationFrame(pacmanLoop);
+      animFrameId = requestAnimationFrame(rickrollLoop);
     }
 
-    animFrameId = requestAnimationFrame(pacmanLoop);
-  }
-
-  function drawPacman(x, y, r, angle, mouth) {
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(angle);
-
-    ctx.beginPath();
-    ctx.arc(0, 0, r, mouth * Math.PI, (2 - mouth) * Math.PI);
-    ctx.lineTo(0, 0);
-    ctx.closePath();
-
-    // Classic arcade yellow or CMF vibrant orange
-    ctx.fillStyle = '#FFD700';
-    ctx.shadowColor = '#FF4400';
-    ctx.shadowBlur = 15;
-    ctx.fill();
-
-    // Eye
-    ctx.beginPath();
-    ctx.arc(r * 0.2, -r * 0.55, 3.5, 0, Math.PI * 2);
-    ctx.fillStyle = '#000000';
-    ctx.fill();
-
-    ctx.restore();
-  }
-
-  function drawGhost(x, y, color, time) {
-    ctx.save();
-    ctx.translate(x, y);
-    const r = 22;
-
-    // Body
-    ctx.beginPath();
-    ctx.arc(0, -r * 0.3, r, Math.PI, 0, false);
-    ctx.lineTo(r, r * 0.8);
-
-    // Wavy bottom skirt
-    const waves = 3;
-    const step = (r * 2) / waves;
-    for (let i = waves; i >= 0; i--) {
-      const wx = -r + i * step;
-      const wy = r * 0.8 + Math.sin(time * 0.015 + i) * 4;
-      ctx.lineTo(wx, wy);
-    }
-    ctx.closePath();
-
-    ctx.fillStyle = color;
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 10;
-    ctx.fill();
-
-    // Eyes
-    [-8, 8].forEach(ex => {
-      ctx.beginPath();
-      ctx.arc(ex, -6, 5.5, 0, Math.PI * 2);
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fill();
-
-      // Pupils looking towards Pacman
-      ctx.beginPath();
-      ctx.arc(ex - 2, -6, 2.5, 0, Math.PI * 2);
-      ctx.fillStyle = '#000088';
-      ctx.fill();
-    });
-
-    ctx.restore();
+    animFrameId = requestAnimationFrame(rickrollLoop);
   }
 
   // ==========================================================================
@@ -454,15 +357,17 @@
     if (activeMode === 'gravity') return;
     activeMode = 'gravity';
     createOverlay();
+    stopChiptune();
     if (ctx) ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
 
     playCrashSound();
 
-    // Collect candidate UI elements
+    // Target major UI blocks
     const selector = [
+      '#wcmf-rickroll-modal',
       'header',
       '.cmf-card',
-      'button:not(#btn-easter-restore):not(#btn-easter-pacman):not(#btn-easter-gravity)',
+      'button:not(#btn-easter-restore):not(#btn-easter-rickroll):not(#btn-easter-gravity)',
       '.cmf-select',
       '.watch-case-container',
       '.watch-preview-container',
@@ -472,7 +377,6 @@
     ].join(',');
 
     const rawElements = Array.from(document.querySelectorAll(selector));
-    // Filter out children of other elements to avoid double physics
     const elements = rawElements.filter(el => {
       if (el.closest('#wcmf-easter-hud')) return false;
       return !rawElements.some(parent => parent !== el && parent.contains(el));
@@ -489,7 +393,7 @@
         w: rect.width,
         h: rect.height,
         vx: (Math.random() - 0.5) * 8,
-        vy: Math.random() * -5, // slight initial pop upward
+        vy: Math.random() * -5,
         angle: 0,
         vAngle: (Math.random() - 0.5) * 4,
         isDragging: false,
@@ -517,12 +421,10 @@
 
       physicsItems.forEach(item => {
         if (item.isDragging) {
-          // Dragged by user
           item.vx = (lastMouse.vx * 0.7);
           item.vy = (lastMouse.vy * 0.7);
           item.vAngle = (lastMouse.vx * 0.1);
         } else {
-          // Apply gravity
           item.vy += gravity;
           item.vx *= friction;
           item.vy *= friction;
@@ -539,7 +441,6 @@
             item.vx *= 0.92;
             item.vAngle *= 0.85;
 
-            // Small floor bounce sound occasionally on hard impacts
             if (Math.abs(item.vy) > 6) {
               playTone(180 + Math.random() * 60, 'triangle', 0.05, 0.08);
             }
@@ -564,7 +465,6 @@
           }
         }
 
-        // Apply 3D hardware-accelerated transform
         const dx = item.x - item.origX;
         const dy = item.y - item.origY;
         item.el.style.transform = `translate3d(${dx.toFixed(2)}px, ${dy.toFixed(2)}px, 0px) rotate(${item.angle.toFixed(2)}deg)`;
@@ -649,24 +549,13 @@
       animFrameId = null;
     }
 
+    stopChiptune();
     cleanupGravity();
 
-    // Restore text
-    chompedElements.forEach(node => {
-      if (node.parentElement) {
-        node.parentElement.style.color = '';
-        node.parentElement.style.opacity = '';
-        node.parentElement.style.transition = '';
-      }
-    });
-    chompedElements.clear();
-
-    // Re-collect original text by refreshing text nodes if needed
-    if (pacman.targetNodes) {
-      pacman.targetNodes.forEach(t => {
-        t.node.textContent = t.originalText;
-      });
-      pacman.targetNodes = [];
+    // Remove Rickroll Modal
+    if (rickrollModal && rickrollModal.parentElement) {
+      rickrollModal.parentElement.removeChild(rickrollModal);
+      rickrollModal = null;
     }
 
     // Clean overlay and HUD
@@ -681,10 +570,8 @@
       hudElement = null;
     }
 
-    score = 0;
     activeMode = null;
 
-    // Toast notification
     if (window.showToast) {
       window.showToast('Reality restored: matrix stabilized! 🌐');
     }
@@ -701,8 +588,11 @@
   // 6. PUBLIC EXPORTS
   // ==========================================================================
   window.triggerEasterEgg = function () {
-    // Default flow: Launch Pac-Man first, with immediate HUD options for Gravity!
-    startPacmanMode();
+    startRickrollMode();
+  };
+
+  window.triggerRickroll = function () {
+    startRickrollMode();
   };
 
   window.triggerGoogleGravity = function () {
@@ -711,4 +601,3 @@
 
   window.restoreReality = restoreReality;
 })();
-

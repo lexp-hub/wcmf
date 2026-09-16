@@ -2254,7 +2254,8 @@ function App() {
   // Easter egg: DevTools console toolkit
   useEffect(() => {
     window.wcmf = {
-      pacman: () => window.triggerEasterEgg && window.triggerEasterEgg(),
+      rickroll: () => window.triggerRickroll && window.triggerRickroll(),
+      pacman: () => window.triggerRickroll && window.triggerRickroll(),
       gravity: () => window.triggerGoogleGravity && window.triggerGoogleGravity(),
       restore: () => window.restoreReality && window.restoreReality(),
       secret: () => {
@@ -2340,10 +2341,10 @@ Available developer commands:
       const currentBuf = konamiBufferRef.current.map(k => k.toLowerCase());
       if (currentBuf.length === 10 && konamiTarget.every((k, i) => currentBuf[i] === k)) {
         konamiBufferRef.current = [];
-        if (window.triggerEasterEgg) {
-          window.triggerEasterEgg();
+        if (window.triggerRickroll) {
+          window.triggerRickroll();
         }
-        showToast('👾 CHAOS PROTOCOL: Pac-Man & Google Gravity activated!');
+        showToast('🕺 RICKROLL ACTIVATED: Never Gonna Give You Up!');
       }
 
       if (e.key === 'Delete' || e.key === 'Backspace' || ((e.key === 'x' || e.key === 'd') && !e.ctrlKey && !e.metaKey)) {
