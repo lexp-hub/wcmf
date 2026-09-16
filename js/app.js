@@ -2249,10 +2249,14 @@ function App() {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
   };
+  window.showToast = showToast;
 
   // Easter egg: DevTools console toolkit
   useEffect(() => {
     window.wcmf = {
+      pacman: () => window.triggerEasterEgg && window.triggerEasterEgg(),
+      gravity: () => window.triggerGoogleGravity && window.triggerGoogleGravity(),
+      restore: () => window.restoreReality && window.restoreReality(),
       secret: () => {
         console.log(`%c
    ██╗    ██╗ ██████╗███╗   ███╗███████╗
@@ -2336,9 +2340,10 @@ Available developer commands:
       const currentBuf = konamiBufferRef.current.map(k => k.toLowerCase());
       if (currentBuf.length === 10 && konamiTarget.every((k, i) => currentBuf[i] === k)) {
         konamiBufferRef.current = [];
-        const cyber = PRESETS.find(p => p.id === 'lex-cyber-glyph') || PRESETS[0];
-        loadPreset(cyber);
-        showToast('[ROOT ACCESS] Konami Code: Cyber Glyph 1984 unlocked!');
+        if (window.triggerEasterEgg) {
+          window.triggerEasterEgg();
+        }
+        showToast('👾 CHAOS PROTOCOL: Pac-Man & Google Gravity activated!');
       }
 
       if (e.key === 'Delete' || e.key === 'Backspace' || ((e.key === 'x' || e.key === 'd') && !e.ctrlKey && !e.metaKey)) {
