@@ -280,8 +280,8 @@
           loop
           style="position:absolute; top:0; left:0; width:100%; height:100%; object-fit:contain; background:#000;"
         >
+          <source src=".rickroll.mp4" type="video/mp4">
           <source src="rickroll.mp4" type="video/mp4">
-          <source src="Rick%20Astley%20-%20Never%20Gonna%20Give%20You%20Up%20(Official%20Video)%20(4K%20Remaster).mp4" type="video/mp4">
           Your browser does not support HTML5 MP4 video.
         </video>
       </div>
