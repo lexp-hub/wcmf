@@ -271,19 +271,26 @@
       </div>
 
       <!-- Native MP4 Video Player with Autoplay & Controls -->
-      <div style="position:relative; width:100%; padding-top:56.25%; border-radius:10px; overflow:hidden; border:1px solid #27272A; background:#000;">
+      <div id="rickroll-video-container" style="position:relative; width:100%; padding-top:56.25%; border-radius:10px; overflow:hidden; border:1px solid #27272A; background:#000;">
         <video
           id="rickroll-native-video"
           autoplay
           playsinline
           controls
           loop
+          preload="auto"
           style="position:absolute; top:0; left:0; width:100%; height:100%; object-fit:contain; background:#000;"
         >
           <source src=".rickroll.mp4" type="video/mp4">
+          <source src="media/rickroll.mp4" type="video/mp4">
           <source src="rickroll.mp4" type="video/mp4">
           Your browser does not support HTML5 MP4 video.
         </video>
+
+        <!-- Unmute floating badge if browser forced muted autoplay -->
+        <div id="rickroll-unmute-overlay" style="display:none; position:absolute; bottom:16px; left:50%; transform:translateX(-50%); z-index:10; background:#FF4400; color:#000; font-weight:bold; font-size:11px; padding:6px 14px; border-radius:20px; cursor:pointer; box-shadow:0 0 15px rgba(255,68,0,0.7); display:flex; align-items:center; gap:6px;">
+          <span>🔊 CLICCA PER L'AUDIO / UNMUTE</span>
+        </div>
       </div>
 
       <!-- Live Karaoke Subtitle Banner -->
@@ -299,17 +306,75 @@
     document.body.appendChild(rickrollModal);
 
     const videoEl = document.getElementById('rickroll-native-video');
+    const unmuteOverlay = document.getElementById('rickroll-unmute-overlay');
+    const container = document.getElementById('rickroll-video-container');
+
+    let fallbackTriggered = false;
+    const triggerYouTubeFallback = () => {
+      if (fallbackTriggered) return;
+      fallbackTriggered = true;
+      console.warn('[Rickroll] Local MP4 unavailable, switching to YouTube stream...');
+      if (container) {
+        container.innerHTML = `
+          <iframe
+            src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?autoplay=1&enablejsapi=1&playsinline=1&controls=1"
+            title="Rick Astley - Never Gonna Give You Up"
+            style="position:absolute; top:0; left:0; width:100%; height:100%; border:0;"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowfullscreen
+          ></iframe>
+        `;
+      }
+    };
+
     if (videoEl) {
-      videoEl.volume = 0.85;
+      videoEl.volume = 0.9;
+
+      // If video file fails to load -> seamlessly load YouTube embed
+      videoEl.addEventListener('error', triggerYouTubeFallback);
+      const sources = videoEl.querySelectorAll('source');
+      if (sources.length > 0) {
+        sources[sources.length - 1].addEventListener('error', triggerYouTubeFallback);
+      }
+
+      // Try playing with sound first
       const playPromise = videoEl.play();
       if (playPromise !== undefined) {
         playPromise.then(() => {
           stopChiptune();
+          if (unmuteOverlay) unmuteOverlay.style.display = 'none';
         }).catch(err => {
-          console.warn('[Rickroll] Native video autoplay blocked, starting chiptune fallback:', err);
-          playRickChiptune();
+          console.warn('[Rickroll] Browser blocked unmuted autoplay. Starting muted video:', err);
+          // Browser requires muted for initial autoplay: start muted
+          videoEl.muted = true;
+          videoEl.play().then(() => {
+            if (unmuteOverlay) unmuteOverlay.style.display = 'flex';
+          }).catch(err2 => {
+            console.warn('[Rickroll] Native video playback blocked, loading YouTube fallback:', err2);
+            triggerYouTubeFallback();
+          });
         });
       }
+
+      // Unmute on clicking modal or unmute button
+      const unmuteVideo = () => {
+        if (videoEl) {
+          videoEl.muted = false;
+          videoEl.volume = 1.0;
+          videoEl.play().catch(() => {});
+        }
+        if (unmuteOverlay) unmuteOverlay.style.display = 'none';
+      };
+
+      if (unmuteOverlay) {
+        unmuteOverlay.addEventListener('click', unmuteVideo);
+      }
+
+      rickrollModal.addEventListener('click', (e) => {
+        if (e.target.id !== 'btn-close-rickroll') {
+          unmuteVideo();
+        }
+      });
     }
 
     document.getElementById('btn-close-rickroll').addEventListener('click', () => {
