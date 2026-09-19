@@ -281,7 +281,6 @@
           preload="auto"
           style="position:absolute; top:0; left:0; width:100%; height:100%; object-fit:contain; background:#000;"
         >
-          <source src=".rickroll.mp4" type="video/mp4">
           <source src="media/rickroll.mp4" type="video/mp4">
           <source src="rickroll.mp4" type="video/mp4">
           Your browser does not support HTML5 MP4 video.

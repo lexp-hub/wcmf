@@ -1,0 +1,27 @@
+{
+  "name": "wcmf",
+  "version": "1.0.0",
+  "description": "Web-based watchface designer and Bluetooth BLE flasher for CMF by Nothing smartwatches (Watch Pro 2, Watch 3 Pro, Watch Pro).",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lexp-hub/wcmf.git"
+  },
+  "keywords": [
+    "cmf"
+  ],
+  "author": "lex",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/lexp-hub/wcmf/issues"
+  },
+  "homepage": "https://github.com/lexp-hub/wcmf#readme",
+  "devDependencies": {
+    "eslint": "^9.39.5",
+    "eslint-plugin-react": "^7.37.5",
+    "globals": "^17.12.0"
+  }
+}
